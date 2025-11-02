@@ -39,16 +39,17 @@ function hslToRgb(h, s, l) {
   }
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
-const hex = ([r,g,b]) => `rgb(${r},${g},${b})`;
+const rgbStr = ([r,g,b]) => `rgb(${r},${g},${b})`;
 
 export default function App() {
   const [imageSrc, setImageSrc] = useState(null);
   const [processedSrc, setProcessedSrc] = useState(null);
-  const [baseColors, setBaseColors] = useState([]);     // [[r,g,b],[r,g,b]]
-  const [palette, setPalette] = useState([]);           // rgb() strings
+  const [baseColors, setBaseColors] = useState([]);
+  const [palette, setPalette] = useState([]);
+  const [numColors, setNumColors] = useState(2);
   const [shadesPerColor, setShadesPerColor] = useState(5);
-  const [outputSize, setOutputSize] = useState(750);    // slider: 300..1200
-  const [pixelSize, setPixelSize] = useState(6);        // small slider for chunkiness
+  const [outputSize, setOutputSize] = useState(750);
+  const [pixelSize, setPixelSize] = useState(6);
   const [processing, setProcessing] = useState(false);
 
   const canvasRef = useRef();
@@ -64,32 +65,31 @@ export default function App() {
     setBaseColors([]);
   };
 
-  const getRandomColors = (ctx, width, height) => {
-    function sampleOne() {
+  const getRandomColors = (ctx, width, height, count) => {
+    function sample() {
       const x = Math.floor(Math.random() * width);
       const y = Math.floor(Math.random() * height);
       const d = ctx.getImageData(x, y, 1, 1).data;
       return [d[0], d[1], d[2]];
     }
-    let c1 = sampleOne();
-    let c2 = sampleOne();
-    let tries = 0;
-    while (tries < 20) {
-      const dist = Math.hypot(c1[0]-c2[0], c1[1]-c2[1], c1[2]-c2[2]);
-      if (dist > 80) break;
-      c2 = sampleOne();
-      tries++;
+    const colors = [];
+    while (colors.length < count) {
+      const c = sample();
+      if (
+        !colors.some(
+          ([r,g,b]) => Math.hypot(r-c[0], g-c[1], b-c[2]) < 60
+        )
+      ) colors.push(c);
     }
-    return [c1, c2];
+    return colors;
   };
 
   const makeShades = (rgb, n) => {
     const [h, s, l0] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
-    const minL = 0.18, maxL = 0.88;
+    const minL = 0.18, maxL = 0.88, blend = 0.5;
     const arr = [];
     for (let i = 0; i < n; i++) {
       const t = n === 1 ? 0.5 : i / (n - 1);
-      const blend = 0.5;
       const targetL = minL + t * (maxL - minL);
       const L = targetL * (1 - blend) + l0 * blend;
       arr.push(hslToRgb(h, s, Math.max(0, Math.min(1, L))));
@@ -97,64 +97,56 @@ export default function App() {
     return arr;
   };
 
-  const buildPalette = (c1, c2, n) => {
-    const s1 = makeShades(c1, n).map(hex);
-    const s2 = makeShades(c2, n).map(hex);
-    return [...s1, ...s2];
-  };
+  const buildPalette = (baseCols, shades) => baseCols.flatMap(c => makeShades(c, shades).map(rgbStr));
 
   const processImage = async ({ rerollColors = false } = {}) => {
     if (!imageSrc || processing) return;
     setProcessing(true);
-    // allow UI to paint disabled/loading state
-    await new Promise((r) => requestAnimationFrame(() => r()));
+    await new Promise(r => requestAnimationFrame(() => r()));
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const img = new Image();
     img.onload = () => {
       const scale = outputSize / Math.max(img.width, img.height);
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      canvas.width = w;
-      canvas.height = h;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      canvas.width = w; canvas.height = h;
 
-      ctx.imageSmoothingEnabled = false; // crisp pixels
+      ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
 
       let chosenBase = baseColors;
-      if (rerollColors || baseColors.length !== 2) {
-        chosenBase = getRandomColors(ctx, w, h);
+      if (rerollColors || baseColors.length !== numColors) {
+        chosenBase = getRandomColors(ctx, w, h, numColors);
         setBaseColors(chosenBase);
       }
 
-      const pal = buildPalette(chosenBase[0], chosenBase[1], shadesPerColor);
+      const pal = buildPalette(chosenBase, shadesPerColor);
       setPalette(pal);
 
-      const shades1 = pal.slice(0, shadesPerColor);
-      const shades2 = pal.slice(shadesPerColor);
-
       const data = ctx.getImageData(0, 0, w, h).data;
-      const dist2 = (r1,g1,b1,r2,g2,b2) => {
-        const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
-        return dr*dr + dg*dg + db*db;
-      };
-      const lum = (r,g,b) => 0.2126*r + 0.7152*g + 0.0722*b;
+      const d2 = (r1,g1,b1,r2,g2,b2)=>((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
+      const lum = (r,g,b)=>0.2126*r+0.7152*g+0.0722*b;
 
-      for (let y = 0; y < h; y += pixelSize) {
-        for (let x = 0; x < w; x += pixelSize) {
+      const px = pixelSize;
+      for (let y = 0; y < h; y += px) {
+        for (let x = 0; x < w; x += px) {
           const i = (y * w + x) * 4;
           const r = data[i], g = data[i+1], b = data[i+2];
 
-          const d1 = dist2(r,g,b, chosenBase[0][0], chosenBase[0][1], chosenBase[0][2]);
-          const d2 = dist2(r,g,b, chosenBase[1][0], chosenBase[1][1], chosenBase[1][2]);
-          const useFirst = d1 <= d2;
+          // Find nearest base color
+          let nearest = 0, minDist = Infinity;
+          chosenBase.forEach((c, idx) => {
+            const d = d2(r,g,b, c[0], c[1], c[2]);
+            if (d < minDist) { minDist = d; nearest = idx; }
+          });
 
           const L = lum(r,g,b) / 255;
-          const idx = Math.min(shadesPerColor - 1, Math.max(0, Math.floor(L * shadesPerColor)));
-          ctx.fillStyle = useFirst ? shades1[idx] : shades2[idx];
-          ctx.fillRect(x, y, pixelSize, pixelSize);
+          const idxShade = Math.min(shadesPerColor - 1, Math.floor(L * shadesPerColor));
+          ctx.fillStyle = pal[nearest * shadesPerColor + idxShade];
+          ctx.fillRect(x, y, px, px);
         }
       }
 
@@ -168,150 +160,82 @@ export default function App() {
   const downloadPNG = () => {
     if (!processedSrc) return;
     const a = document.createElement("a");
-    a.href = processedSrc;
-    a.download = "pixelated.png";
-    a.click();
+    a.href = processedSrc; a.download = "pixelated.png"; a.click();
   };
 
   const canProcess = Boolean(imageSrc) && !processing;
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 gap-4">
-      <h1 className="text-2xl font-bold tracking-tight">🎨 Two-Color Pixelator (Shades + Slider)</h1>
+    <div className="app">
+      <h1 className="title">Pixelator</h1>
 
-      {/* Controls */}
-      <div className="w-full max-w-3xl grid sm:grid-cols-2 gap-4">
-        <div className="flex items-center justify-between gap-3 bg-neutral-800/60 rounded-xl p-4">
-          <div className="text-sm opacity-80">
-            <div className="font-semibold">Upload</div>
-            <div className="opacity-70">Pick a photo to pixelate</div>
-          </div>
-          <label className="cursor-pointer bg-neutral-700 hover:bg-neutral-600 active:scale-[0.98] px-3 py-2 rounded-lg transition">
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+      <div className="controlsRow">
+        <label className="control">
+          <span className="controlLabel"># Colors <b>{numColors}</b></span>
+          <input type="range" min="2" max="10" value={numColors}
+                 onChange={e=>setNumColors(Number(e.target.value))}/>
+        </label>
+
+        <label className="control">
+          <span className="controlLabel">Shades per color <b>{shadesPerColor}</b></span>
+          <input type="range" min="1" max="5" value={shadesPerColor}
+                 onChange={e=>setShadesPerColor(Number(e.target.value))}/>
+        </label>
+
+        <label className="control">
+          <span className="controlLabel">Output size <b>{outputSize}px</b></span>
+          <input type="range" min="300" max="1200" step="50" value={outputSize}
+                 onChange={e=>setOutputSize(Number(e.target.value))}/>
+        </label>
+
+        <label className="control">
+          <span className="controlLabel">Pixel size <b>{pixelSize}px</b></span>
+          <input type="range" min="2" max="16" step="1" value={pixelSize}
+                 onChange={e=>setPixelSize(Number(e.target.value))}/>
+        </label>
+
+        <div className="control">
+          <span className="controlLabel">Upload</span>
+          <label className="fileBtn">
+            <input className="fileInput" type="file" accept="image/*" onChange={handleImageUpload}/>
             Choose Image
           </label>
         </div>
-
-        <div className="bg-neutral-800/60 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Shades per color</span>
-            <span className="text-sm opacity-80">{shadesPerColor}</span>
-          </div>
-          <input
-            type="range"
-            min="1"
-            max="5"
-            value={shadesPerColor}
-            onChange={(e) => setShadesPerColor(Number(e.target.value))}
-            className="w-full mt-2 accent-white"
-          />
-        </div>
-
-        <div className="bg-neutral-800/60 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Output size (long edge)</span>
-            <span className="text-sm opacity-80">{outputSize}px</span>
-          </div>
-          <input
-            type="range"
-            min="300"
-            max="1200"
-            step="50"
-            value={outputSize}
-            onChange={(e) => setOutputSize(Number(e.target.value))}
-            className="w-full mt-2 accent-white"
-          />
-        </div>
-
-        <div className="bg-neutral-800/60 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Pixel size (chunkiness)</span>
-            <span className="text-sm opacity-80">{pixelSize}px</span>
-          </div>
-          <input
-            type="range"
-            min="2"
-            max="16"
-            step="1"
-            value={pixelSize}
-            onChange={(e) => setPixelSize(Number(e.target.value))}
-            className="w-full mt-2 accent-white"
-          />
-        </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          disabled={!canProcess}
-          onClick={() => processImage({ rerollColors: false })}
-          className={`px-4 py-2 rounded-lg transition ${
-            canProcess
-              ? "bg-blue-500 hover:bg-blue-600 active:scale-[0.98]"
-              : "bg-blue-500/40 cursor-not-allowed"
-          }`}
-        >
+      <div className="btnRow">
+        <button className="btn" disabled={!canProcess}
+                onClick={()=>processImage({rerollColors:false})}>
           {processing ? "Processing…" : "Pixelate"}
         </button>
-        <button
-          disabled={!canProcess}
-          onClick={() => processImage({ rerollColors: true })}
-          className={`px-4 py-2 rounded-lg transition ${
-            canProcess
-              ? "bg-amber-500 hover:bg-amber-600 active:scale-[0.98]"
-              : "bg-amber-500/40 cursor-not-allowed"
-          }`}
-        >
+        <button className="btn" disabled={!canProcess}
+                onClick={()=>processImage({rerollColors:true})}>
           🎲 Re-Roll Colors
         </button>
-        <button
-          disabled={!processedSrc}
-          onClick={downloadPNG}
-          className={`px-4 py-2 rounded-lg transition ${
-            processedSrc
-              ? "bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98]"
-              : "bg-emerald-500/40 cursor-not-allowed"
-          }`}
-        >
+        <button className="btn" disabled={!processedSrc} onClick={downloadPNG}>
           ⬇️ Download PNG
         </button>
       </div>
 
-      {/* Palette preview */}
       {palette.length > 0 && (
-        <div className="w-full max-w-3xl bg-neutral-800/60 rounded-xl p-4">
-          <div className="text-sm mb-2 opacity-80">Palette (2 × {shadesPerColor} shades)</div>
-          <div className="flex gap-2">
-            <div className="flex gap-1">{palette.slice(0, shadesPerColor).map((c, i) => (
-              <div key={`c1-${i}`} className="w-6 h-6 rounded border border-white/20" style={{ background: c }} title={c} />
-            ))}</div>
-            <div className="flex gap-1">{palette.slice(shadesPerColor).map((c, i) => (
-              <div key={`c2-${i}`} className="w-6 h-6 rounded border border-white/20" style={{ background: c }} title={c} />
-            ))}</div>
+        <div className="palette">
+          <div className="paletteTitle">Palette ({numColors} × {shadesPerColor})</div>
+          <div className="paletteRow">
+            {palette.map((c,i)=>(
+              <div key={i} className="swatch" style={{background:c}} title={c}/>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Result */}
       {processedSrc && (
-        <div className="mt-2">
-          <img
-            src={processedSrc}
-            alt="Processed"
-            className="max-w-full border-2 border-white/30 rounded-lg shadow-lg transition"
-          />
-          <p className="mt-2 text-sm opacity-80 text-center">
-            Long edge ≈ {outputSize}px · {shadesPerColor} shades/color · pixel size {pixelSize}px
-          </p>
+        <div className="result">
+          <img src={processedSrc} alt="Processed" />
+          <p>{numColors} colors × {shadesPerColor} shades • {outputSize}px wide • pixel {pixelSize}px</p>
         </div>
       )}
 
-      {/* Loading indicator */}
-      {processing && (
-        <div className="text-sm opacity-80 flex items-center gap-2">
-          <span className="loader" /> Crunching pixels…
-        </div>
-      )}
+      {processing && <div className="loading"><span className="loader"/> Crunching pixels…</div>}
 
       <canvas ref={canvasRef} hidden />
     </div>

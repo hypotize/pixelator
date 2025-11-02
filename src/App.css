@@ -1,38 +1,195 @@
-.App {
-  text-align: center;
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --muted: #9aa3b2;
+  --text: #e8eef6;
+  --border: #2a3444;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+body, html, #root {
+  height: 100%;
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 18px;
+}
+
+.title {
+  font-size: clamp(28px, 4.5vw, 48px);
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+/* --- Controls --- */
+.controlsRow {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  align-items: end;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--shadow);
 }
 
-.App-link {
-  color: #61dafb;
+.control {
+  min-width: 210px;
+  max-width: 260px;
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.controlLabel {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Range sliders */
+input[type="range"] {
+  width: 100%;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: #243244;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(255,255,255,0.25);
+  transition: transform .1s ease, box-shadow .2s ease;
+}
+input[type="range"]:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 12px rgba(255,255,255,0.45);
+}
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(0.9);
+}
+
+/* --- File upload --- */
+.fileBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #2b2b2b;
+  color: var(--text);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: var(--shadow);
+}
+.fileBtn:hover { filter: brightness(1.1); }
+.fileBtn:active { transform: translateY(1px); }
+.fileInput { display: none; }
+
+/* --- Unified Gray Buttons --- */
+.btnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn {
+  background: linear-gradient(180deg, #4a4a4a, #2e2e2e);
+  border: 1px solid #3d3d3d;
+  color: #fff;
+  font-weight: 600;
+  padding: 12px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 10px rgba(0,0,0,0.4);
+}
+.btn:hover:not(:disabled) {
+  box-shadow: 0 0 15px rgba(200,200,200,0.4);
+  filter: brightness(1.2);
+  transform: translateY(-1px);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 0 6px rgba(255,255,255,0.2);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Palette --- */
+.palette {
+  width: 100%;
+  max-width: 900px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+.paletteTitle {
+  font-size: 12px; color: var(--muted); margin-bottom: 8px;
+}
+.paletteRow {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+}
+.swatch {
+  width: 26px; height: 26px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+/* --- Result --- */
+.result {
+  text-align: center;
+}
+.result img {
+  max-width: min(900px, 95vw);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.result p {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+/* --- Loading --- */
+.loading {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted);
+}
+.loader {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .control { flex: 1 1 100%; max-width: none; }
 }
